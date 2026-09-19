@@ -47,6 +47,17 @@ MGF_EXPORT int mgf_is_running(void);
 
 MGF_EXPORT void mgf_set_touch_keys(uint32_t keys);
 
+// Sets an mGBA config option (e.g. "volume", "mute", "frameskip", "gb.model", "gba.bios",
+// "useBios", "skipBios", "gb.pal[0]"). A NULL or empty value unsets it. Options are kept for
+// the whole session and re-applied on every ROM load; live-reloadable ones take effect at once.
+MGF_EXPORT void mgf_set_config(const char* key, const char* value);
+
+// ratio > 0 runs at that multiple of normal speed (audio-paced); ratio <= 0 is unlimited.
+MGF_EXPORT void mgf_set_fast_forward(int enabled, float ratio, int mute);
+
+// Frames emulated since the game started (for an FPS counter).
+MGF_EXPORT uint32_t mgf_frame_count(void);
+
 // Save states live in <dataDir>/states/<rom>.ss<slot>. Saving also writes <rom>.ss<slot>.thumb:
 // "MGFT", uint32 width, uint32 height (little endian), then width*height RGBA8888 pixels.
 // Loading a state restores RTC but never overwrites the battery save.

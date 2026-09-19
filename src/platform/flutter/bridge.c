@@ -33,7 +33,19 @@ struct mgfContext {
 	_Atomic uint32_t padKeys;
 	// Keys pressed since the last frame, so taps shorter than a frame are never lost
 	_Atomic uint32_t latchedKeys;
+	_Atomic uint32_t frameCount;
+	bool fastForward;
 };
+
+#define MAX_SETTINGS 64
+
+struct mgfSetting {
+	char* key;
+	char* value;
+};
+
+static struct mgfSetting _settings[MAX_SETTINGS];
+static size_t _nSettings;
 
 static struct mgfContext _ctx;
 
@@ -70,6 +82,7 @@ static void _frameCallback(struct mCoreThread* thread) {
 	struct mCore* core = thread->core;
 	uint32_t keys = atomic_load(&_ctx.touchKeys) | atomic_load(&_ctx.padKeys);
 	core->setKeys(core, keys | atomic_exchange(&_ctx.latchedKeys, 0));
+	atomic_fetch_add(&_ctx.frameCount, 1);
 	unsigned width, height;
 	core->currentVideoSize(core, &width, &height);
 	mgfVideoPost(_ctx.videoBuffer, _ctx.videoStride, width, height);
@@ -136,7 +149,13 @@ int mgf_load_rom(const char* path) {
 	mCoreConfigLoadDefaults(&core->config, &opts);
 	mCoreConfigSetDefaultValue(&core->config, "savegamePath", _ctx.savePath);
 	mCoreConfigSetDefaultValue(&core->config, "savestatePath", _ctx.statePath);
-	mCoreLoadConfig(core);
+	size_t i;
+	for (i = 0; i < _nSettings; ++i) {
+		mCoreConfigSetValue(&core->config, _settings[i].key, _settings[i].value);
+	}
+	// Settings are owned by the app (pushed via mgf_set_config), so don't read config.ini,
+	// which would also clear the values set above
+	mCoreLoadForeignConfig(core, &core->config);
 
 	unsigned width, height;
 	core->baseVideoSize(core, &width, &height);
@@ -175,6 +194,8 @@ int mgf_start(void) {
 		return 0;
 	}
 	_ctx.running = true;
+	_ctx.fastForward = false;
+	atomic_store(&_ctx.frameCount, 0);
 	mgfAudioStart(_ctx.core, &_ctx.thread.impl->sync);
 	return 1;
 }
@@ -271,4 +292,78 @@ int mgf_load_state(int slot) {
 	bool success = mCoreLoadState(_ctx.core, slot, SAVESTATE_RTC);
 	mCoreThreadContinue(&_ctx.thread);
 	return success;
+}
+
+static void _storeSetting(const char* key, const char* value) {
+	size_t i;
+	for (i = 0; i < _nSettings; ++i) {
+		if (strcmp(_settings[i].key, key) == 0) {
+			break;
+		}
+	}
+	if (i == _nSettings) {
+		if (!value || _nSettings == MAX_SETTINGS) {
+			return;
+		}
+		_settings[i].key = strdup(key);
+		_settings[i].value = NULL;
+		++_nSettings;
+	}
+	free(_settings[i].value);
+	_settings[i].value = value ? strdup(value) : NULL;
+}
+
+void mgf_set_config(const char* key, const char* value) {
+	if (value && !value[0]) {
+		value = NULL;
+	}
+	_storeSetting(key, value);
+	if (!_ctx.core) {
+		return;
+	}
+	if (_ctx.running) {
+		mCoreThreadInterrupt(&_ctx.thread);
+	}
+	mCoreConfigSetValue(&_ctx.core->config, key, value);
+	// gb.pal[N] is reloaded as a group under "gb.pal"
+	const char* option = strncmp(key, "gb.pal[", 7) == 0 ? "gb.pal" : key;
+	_ctx.core->reloadConfigOption(_ctx.core, option, NULL);
+	if (_ctx.running) {
+		mCoreThreadContinue(&_ctx.thread);
+	}
+}
+
+void mgf_set_fast_forward(int enabled, float ratio, int mute) {
+	if (!_ctx.running) {
+		return;
+	}
+	struct mCore* core = _ctx.core;
+	struct mCoreSync* sync = &_ctx.thread.impl->sync;
+	mCoreThreadInterrupt(&_ctx.thread);
+	_ctx.fastForward = enabled;
+	float fpsTarget = core->opts.fpsTarget > 0 ? core->opts.fpsTarget : 60.f;
+	if (enabled) {
+		core->opts.mute = mute || core->opts.mute;
+		if (ratio > 0) {
+			// Stay audio-paced, just at a faster clock (mirrors the Qt frontend)
+			sync->fpsTarget = fpsTarget * ratio;
+			sync->audioWait = true;
+		} else {
+			sync->fpsTarget = fpsTarget;
+			sync->audioWait = false;
+		}
+		sync->videoFrameWait = false;
+	} else {
+		core->opts.mute = false;
+		mCoreConfigGetBoolValue(&core->config, "mute", &core->opts.mute);
+		sync->fpsTarget = fpsTarget;
+		sync->audioWait = core->opts.audioSync;
+		sync->videoFrameWait = core->opts.videoSync;
+	}
+	core->reloadConfigOption(core, NULL, NULL);
+	mCoreThreadContinue(&_ctx.thread);
+}
+
+uint32_t mgf_frame_count(void) {
+	return atomic_load(&_ctx.frameCount);
 }
