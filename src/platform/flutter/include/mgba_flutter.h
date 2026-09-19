@@ -47,6 +47,12 @@ MGF_EXPORT int mgf_is_running(void);
 
 MGF_EXPORT void mgf_set_touch_keys(uint32_t keys);
 
+// Save states live in <dataDir>/states/<rom>.ss<slot>. Saving also writes <rom>.ss<slot>.thumb:
+// "MGFT", uint32 width, uint32 height (little endian), then width*height RGBA8888 pixels.
+// Loading a state restores RTC but never overwrites the battery save.
+MGF_EXPORT int mgf_save_state(int slot);
+MGF_EXPORT int mgf_load_state(int slot);
+
 #ifdef __cplusplus
 }
 #endif

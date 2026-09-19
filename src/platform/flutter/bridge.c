@@ -8,8 +8,11 @@
 
 #include <mgba/core/config.h>
 #include <mgba/core/core.h>
+#include <mgba/core/directories.h>
+#include <mgba/core/serialize.h>
 #include <mgba/core/thread.h>
 #include <mgba/core/version.h>
+#include <mgba-util/vfs.h>
 
 #include <android/log.h>
 #include <stdatomic.h>
@@ -213,4 +216,54 @@ void mgf_set_touch_keys(uint32_t keys) {
 
 void mgfSetPadKeys(uint32_t keys) {
 	atomic_store(&_ctx.padKeys, keys);
+}
+
+static void _writeThumbnail(int slot) {
+	struct mCore* core = _ctx.core;
+	char suffix[32];
+	snprintf(suffix, sizeof(suffix), ".ss%i.thumb", slot);
+	struct VFile* vf = mDirectorySetOpenSuffix(&core->dirs, core->dirs.state, suffix, O_CREAT | O_TRUNC | O_WRONLY);
+	if (!vf) {
+		return;
+	}
+	unsigned width, height;
+	core->currentVideoSize(core, &width, &height);
+	uint8_t header[12] = { 'M', 'G', 'F', 'T' };
+	STORE_32LE(width, 4, header);
+	STORE_32LE(height, 8, header);
+	vf->write(vf, header, sizeof(header));
+	uint32_t* row = malloc(width * sizeof(*row));
+	unsigned x, y;
+	for (y = 0; y < height; ++y) {
+		for (x = 0; x < width; ++x) {
+			// XBGR8 in memory is R, G, B, X; force X to opaque alpha
+			row[x] = _ctx.videoBuffer[y * _ctx.videoStride + x] | 0xFF000000;
+		}
+		vf->write(vf, row, width * sizeof(*row));
+	}
+	free(row);
+	vf->close(vf);
+}
+
+int mgf_save_state(int slot) {
+	if (!_ctx.running) {
+		return 0;
+	}
+	mCoreThreadInterrupt(&_ctx.thread);
+	bool success = mCoreSaveState(_ctx.core, slot, SAVESTATE_SAVEDATA | SAVESTATE_RTC | SAVESTATE_METADATA);
+	if (success) {
+		_writeThumbnail(slot);
+	}
+	mCoreThreadContinue(&_ctx.thread);
+	return success;
+}
+
+int mgf_load_state(int slot) {
+	if (!_ctx.running) {
+		return 0;
+	}
+	mCoreThreadInterrupt(&_ctx.thread);
+	bool success = mCoreLoadState(_ctx.core, slot, SAVESTATE_RTC);
+	mCoreThreadContinue(&_ctx.thread);
+	return success;
 }
