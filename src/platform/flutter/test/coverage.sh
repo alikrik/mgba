@@ -11,7 +11,9 @@ BUILD=${1:-build-flutter-coverage}
 MIN=${MIN:-85}
 if command -v xcrun >/dev/null 2>&1; then LLVM="xcrun"; else LLVM=""; fi
 
-cmake -S "$HERE" -B "$BUILD" -DMGF_BUILD_TESTS=ON -DCMAKE_C_COMPILER=clang \
+# Both compilers must be clang: mGBA's project also enables C++, and the coverage linker flag
+# below would make CMake's check of a GCC C++ compiler fail.
+cmake -S "$HERE" -B "$BUILD" -DMGF_BUILD_TESTS=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
 	-DCMAKE_C_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
 	-DCMAKE_EXE_LINKER_FLAGS="-fprofile-instr-generate" >/dev/null
 cmake --build "$BUILD" --target mgba_flutter_test
