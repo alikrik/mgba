@@ -31,6 +31,8 @@ struct mgfContext {
 	char statePath[PATH_MAX];
 	_Atomic uint32_t touchKeys;
 	_Atomic uint32_t padKeys;
+	// Keys pressed since the last frame, so taps shorter than a frame are never lost
+	_Atomic uint32_t latchedKeys;
 };
 
 static struct mgfContext _ctx;
@@ -66,7 +68,8 @@ static void _log(struct mLogger* logger, int category, enum mLogLevel level, con
 
 static void _frameCallback(struct mCoreThread* thread) {
 	struct mCore* core = thread->core;
-	core->setKeys(core, atomic_load(&_ctx.touchKeys) | atomic_load(&_ctx.padKeys));
+	uint32_t keys = atomic_load(&_ctx.touchKeys) | atomic_load(&_ctx.padKeys);
+	core->setKeys(core, keys | atomic_exchange(&_ctx.latchedKeys, 0));
 	unsigned width, height;
 	core->currentVideoSize(core, &width, &height);
 	mgfVideoPost(_ctx.videoBuffer, _ctx.videoStride, width, height);
@@ -212,10 +215,12 @@ int mgf_is_running(void) {
 
 void mgf_set_touch_keys(uint32_t keys) {
 	atomic_store(&_ctx.touchKeys, keys);
+	atomic_fetch_or(&_ctx.latchedKeys, keys);
 }
 
 void mgfSetPadKeys(uint32_t keys) {
 	atomic_store(&_ctx.padKeys, keys);
+	atomic_fetch_or(&_ctx.latchedKeys, keys);
 }
 
 static void _writeThumbnail(int slot) {
