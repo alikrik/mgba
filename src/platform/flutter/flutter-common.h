@@ -26,4 +26,11 @@ void mgfAudioStop(void);
 
 void mgfSetPadKeys(uint32_t keys);
 
+#ifdef MGF_TESTING
+// Test-only access to bridge internals (host unit tests, see test/)
+struct mCoreThread;
+struct mCore* mgfTestCore(void);
+struct mCoreThread* mgfTestThread(void);
+#endif
+
 #endif

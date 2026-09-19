@@ -22,4 +22,23 @@ cmake -S src/platform/flutter -B build-android -G Ninja \
 cmake --build build-android
 ```
 
+## Tests
+
+Host unit tests drive the real `bridge.c` and mGBA core through the `mgf_*` API, with video and audio replaced by stubs (`test/stubs.c`). The audio stub drains samples through `mCoreSync` like AAudio does. They use two MIT-licensed test ROMs in `test/fixtures/` (dmg-acid2, jsmolka's gba-tests), and cover:
+- loading;
+- the golden dmg-acid2 frame;
+- key latching;
+- settings;
+- fast-forward;
+- save states;
+- lifecycle.
+
+```sh
+cmake -S src/platform/flutter -B build-flutter-test -DMGF_BUILD_TESTS=ON
+cmake --build build-flutter-test && ctest --test-dir build-flutter-test --output-on-failure
+
+# with line coverage of bridge.c, failing below MIN (default 85%)
+src/platform/flutter/test/coverage.sh
+```
+
 After changing this directory, push the `flutter-android` branch, then `git pull` inside fGBA's `third_party/mgba` and commit the submodule bump there. If the header changed, regenerate the Dart bindings as well (`dart run ffigen`).

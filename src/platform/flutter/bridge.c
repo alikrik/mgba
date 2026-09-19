@@ -14,7 +14,9 @@
 #include <mgba/core/version.h>
 #include <mgba-util/vfs.h>
 
+#ifdef __ANDROID__
 #include <android/log.h>
+#endif
 #include <stdatomic.h>
 #include <sys/stat.h>
 
@@ -54,6 +56,13 @@ static struct mLogFilter _logFilter;
 
 static void _log(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
 	UNUSED(logger);
+#ifndef __ANDROID__
+	// Host builds (unit tests)
+	fprintf(stderr, "%s: ", mLogCategoryName(category));
+	vfprintf(stderr, format, args);
+	fputc('\n', stderr);
+	UNUSED(level);
+#else
 	int priority;
 	switch (level) {
 	case mLOG_FATAL:
@@ -76,6 +85,7 @@ static void _log(struct mLogger* logger, int category, enum mLogLevel level, con
 	char message[1024];
 	vsnprintf(message, sizeof(message), format, args);
 	__android_log_print(priority, "mgba", "%s: %s", mLogCategoryName(category), message);
+#endif
 }
 
 static void _frameCallback(struct mCoreThread* thread) {
@@ -170,6 +180,9 @@ int mgf_load_rom(const char* path) {
 		return MGF_PLATFORM_NONE;
 	}
 	mCoreAutoloadSave(core);
+	// Reset now so the model (and thus currentVideoSize) is known before mgf_start: an unreset
+	// GB core reports the 256x224 SGB frame, which would give the UI the wrong aspect ratio.
+	core->reset(core);
 	return core->platform(core);
 }
 
@@ -367,3 +380,13 @@ void mgf_set_fast_forward(int enabled, float ratio, int mute) {
 uint32_t mgf_frame_count(void) {
 	return atomic_load(&_ctx.frameCount);
 }
+
+#ifdef MGF_TESTING
+struct mCore* mgfTestCore(void) {
+	return _ctx.core;
+}
+
+struct mCoreThread* mgfTestThread(void) {
+	return _ctx.running ? &_ctx.thread : NULL;
+}
+#endif
