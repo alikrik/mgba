@@ -99,8 +99,8 @@ int mgf_init(const char* dataDir) {
 
 	_logger.log = _log;
 	mLogFilterInit(&_logFilter);
-	// Warnings and game errors can fire every frame (e.g. ROM hacks poking the RTC) and flood logcat
-	_logFilter.defaultLevels = mLOG_FATAL | mLOG_ERROR | mLOG_INFO;
+	// Lower levels can fire every frame (DMA info, ROM hacks poking the RTC) and flood logcat
+	_logFilter.defaultLevels = mLOG_FATAL | mLOG_ERROR;
 	_logger.filter = &_logFilter;
 	mLogSetDefaultLogger(&_logger);
 	return 1;
