@@ -8,7 +8,7 @@
 #include <android/native_window_jni.h>
 #include <jni.h>
 
-JNIEXPORT void JNICALL Java_com_example_fgba_MgbaNative_setSurface(JNIEnv* env, jclass clazz, jobject surface) {
+JNIEXPORT void JNICALL Java_com_alikrik_fgba_MgbaNative_setSurface(JNIEnv* env, jclass clazz, jobject surface) {
 	UNUSED(clazz);
 	ANativeWindow* window = NULL;
 	if (surface) {
@@ -17,7 +17,7 @@ JNIEXPORT void JNICALL Java_com_example_fgba_MgbaNative_setSurface(JNIEnv* env, 
 	mgfVideoSetWindow(window);
 }
 
-JNIEXPORT void JNICALL Java_com_example_fgba_MgbaNative_setPadKeys(JNIEnv* env, jclass clazz, jint keys) {
+JNIEXPORT void JNICALL Java_com_alikrik_fgba_MgbaNative_setPadKeys(JNIEnv* env, jclass clazz, jint keys) {
 	UNUSED(env);
 	UNUSED(clazz);
 	mgfSetPadKeys(keys);
